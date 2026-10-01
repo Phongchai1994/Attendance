@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+venv/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Build
+build/
+dist/
+*.spec
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+
+# Database backup
+*.backup
+*.dump
+
+# Microsoft Access database
+*.mdb
+*.accdb
