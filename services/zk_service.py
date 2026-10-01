@@ -1,1 +1,0 @@
-"""ZK device service."""

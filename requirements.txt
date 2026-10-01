@@ -1,9 +1,0 @@
-PyQt6
-SQLAlchemy
-alembic
-python-dotenv
-requests
-pandas
-openpyxl
-reportlab
-pyzk

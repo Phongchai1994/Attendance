@@ -1,3 +1,3 @@
-# attendance_system
+# Attendance
 
-Project scaffold for an attendance management application.
+Fresh start for the attendance system.
