@@ -1,9 +1,14 @@
 from datetime import date
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from models.attendance_punch import AttendancePunch
+    from models.department import Department
 
 
 class Employee(TimestampMixin, Base):
@@ -76,4 +81,8 @@ class Employee(TimestampMixin, Base):
 
     department: Mapped["Department | None"] = relationship(
         back_populates="employees"
+    )
+
+    punches: Mapped[list["AttendancePunch"]] = relationship(
+        back_populates='employee'
     )
