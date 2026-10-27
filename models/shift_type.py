@@ -7,6 +7,7 @@ from models.base import TimestampMixin, Base
 
 if TYPE_CHECKING:
     from models.shift_rule import ShiftRule
+    from models.duty_roster import DutyRoster
 
 
 class ShiftType(TimestampMixin, Base):
@@ -49,4 +50,8 @@ class ShiftType(TimestampMixin, Base):
     rules: Mapped[list["ShiftRule"]] = relationship(
         back_populates="shift_type",
         cascade="all, delete-orphan",
+    )
+
+    duty_rosters: Mapped[list['DutyRoster']] = relationship(
+        back_populates='shift_type'
     )

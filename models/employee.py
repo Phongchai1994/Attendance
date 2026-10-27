@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from models.attendance_punch import AttendancePunch
     from models.department import Department
     from models.employee_leave import EmployeeLeave
+    from models.duty_roster import DutyRoster
 
 
 class Employee(TimestampMixin, Base):
@@ -89,5 +90,9 @@ class Employee(TimestampMixin, Base):
     )
 
     leaves: Mapped[list['EmployeeLeave']] = relationship(
+        back_populates='employee'
+    )
+
+    duty_rosters: Mapped[list['DutyRoster']] = relationship(
         back_populates='employee'
     )

@@ -7,6 +7,7 @@ from models.shift_rule import ShiftRule
 from models.leave_type import LeaveType
 from models.employee_leave import EmployeeLeave
 from models.leave_attendance_rule import LeaveAttendanceRule
+from models.duty_roster import DutyRoster
 
 __all__ = [
     "Department",
@@ -17,5 +18,6 @@ __all__ = [
     'ShiftRule',
     'LeaveType',
     'EmployeeLeave',
-    'LeaveAttendanceRule'
+    'LeaveAttendanceRule',
+    'DutyRoster',
 ]
