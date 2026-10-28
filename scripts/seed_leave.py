@@ -48,7 +48,7 @@ def seed_leave():
             print('ไม่พบประเภทการลา PERSONAL')
             return
 
-        leave_date = date(2026, 10, 26)
+        leave_date = date(2026, 10, 15)
 
         existing = (
             db.query(EmployeeLeave)
