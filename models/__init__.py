@@ -8,6 +8,7 @@ from models.leave_type import LeaveType
 from models.employee_leave import EmployeeLeave
 from models.leave_attendance_rule import LeaveAttendanceRule
 from models.duty_roster import DutyRoster
+from models.attendance_dialy_result import AttendanceDailyResult
 
 __all__ = [
     "Department",
@@ -20,4 +21,5 @@ __all__ = [
     'EmployeeLeave',
     'LeaveAttendanceRule',
     'DutyRoster',
+    'AttendanceDailyResult',
 ]

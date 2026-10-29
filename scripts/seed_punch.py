@@ -34,9 +34,9 @@ def seed_punch():
         punched_at = datetime(
             2026,
             10,
-            2,
-            7,
-            48,
+            15,
+            16,
+            42,
             12,
             tzinfo=ZoneInfo('Asia/Bangkok'),
         )
@@ -63,7 +63,7 @@ def seed_punch():
             employee_id = employee.id,
             device_id = device.id,
             punched_at = punched_at,
-            direction_hint = "IN",
+            direction_hint = "OUT",
             source = "TEST",
             source_ref = source_ref,
             legacy_user_id = employee.legacy_user_id,
