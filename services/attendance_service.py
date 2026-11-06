@@ -907,7 +907,7 @@ class AttendanceService:
             status_text='ไม่สามารถประเมินประเภทกะนี้ได้',
         )
 
-    def finalize_dialy_attendance(
+    def finalize_daily_attendance(
             self,
             employee_id: int,
             duty_date: date,

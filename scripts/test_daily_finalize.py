@@ -21,9 +21,9 @@ def test_finalize():
 
         service = AttendanceService(db)
 
-        result = service.finalize_dialy_attendance(
+        result = service.finalize_daily_attendance(
             employee_id=employee.id,
-            duty_date=(2026, 10, 15)
+            duty_date=date(2026, 10, 15)
         )
 
         print("----------------------------")

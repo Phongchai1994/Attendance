@@ -77,7 +77,7 @@ class AttendanceDailyResult(TimestampMixin, Base):
         nullable=True,
     )
 
-    last_minutes: Mapped[int] = mapped_column(
+    late_minutes: Mapped[int] = mapped_column(
         Integer,
         default=0,
         nullable=False,

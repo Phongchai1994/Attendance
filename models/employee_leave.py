@@ -1,9 +1,11 @@
 from typing import TYPE_CHECKING
 
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     Date,
+    DateTime,
     ForeignKey,
     String,
     Text,
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class EmployeeLeave(TimestampMixin, Base):
-    __tablename__ = 'employee_leaves'
+    __tablename__ = "employee_leaves"
 
     id: Mapped[int] = mapped_column(
         primary_key=True,
@@ -26,13 +28,13 @@ class EmployeeLeave(TimestampMixin, Base):
     )
 
     employee_id: Mapped[int] = mapped_column(
-        ForeignKey('employees.id'),
+        ForeignKey("employees.id"),
         nullable=False,
         index=True,
     )
 
     leave_type_id: Mapped[int] = mapped_column(
-        ForeignKey('leave_types.id'),
+        ForeignKey("leave_types.id"),
         nullable=False,
     )
 
@@ -49,14 +51,26 @@ class EmployeeLeave(TimestampMixin, Base):
 
     approval_status: Mapped[str] = mapped_column(
         String(20),
-        default='APPROVED',
+        default="APPROVED",
         nullable=False,
     )
 
     source: Mapped[str] = mapped_column(
         String(30),
-        default='MANUAL',
+        default="MANUAL",
         nullable=False,
+    )
+
+    source_ref: Mapped[str | None] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+
+    imported_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     note: Mapped[str | None] = mapped_column(
@@ -64,10 +78,11 @@ class EmployeeLeave(TimestampMixin, Base):
         nullable=True,
     )
 
-    employee: Mapped['Employee'] = relationship(
-        back_populates='leaves'
+    employee: Mapped["Employee"] = relationship(
+        back_populates="leaves"
     )
 
-    leave_type: Mapped['LeaveType'] = relationship(
-        back_populates='employee_leaves'
+    leave_type: Mapped["LeaveType"] = relationship(
+        back_populates="employee_leaves"
     )
+
