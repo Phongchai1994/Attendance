@@ -35,30 +35,29 @@ class TimeEditDialog(QDialog):
 # (โค้ดคลาส TimeEditDialog เดิมที่มีอยู่แล้ว เอาไว้เหมือนเดิมครับ)
 
 class SingleTimeEditDialog(QDialog):
-    def __init__(self, title, label_text, current_time, current_date_str, parent=None): # <--- เพิ่มรับค่า current_date_str
+    # 👇 เพิ่ม default_time เข้ามาในพารามิเตอร์
+    def __init__(self, title, label_text, current_time, current_date_str, default_time="08:30", parent=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(280, 130)
         layout = QFormLayout(self)
 
-        # 1. แสดงวันที่
         lbl_date = QLabel(f"<b>{current_date_str}</b>")
         lbl_date.setStyleSheet("color: #2563EB; font-size: 14px;")
         layout.addRow("📅 วันที่แก้ไข:", lbl_date)
 
-        # 2. ช่องกรอกเวลา (บังคับเลขอารบิก)
         self.time_edit = QTimeEdit()
         self.time_edit.setDisplayFormat("HH:mm")
-        
-        # 👇 บังคับให้เป็นภาษาอังกฤษเพื่อไม่ให้เป็นเลขไทย
         self.time_edit.setLocale(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
         
+        # 👇 ถ้ายามีเวลาเดิมอยู่แล้วให้โชว์เวลาเดิม ถ้าเป็น "-" ให้โชว์ default_time
         if current_time and current_time != "-":
             self.time_edit.setTime(QTime.fromString(current_time, "HH:mm"))
+        else:
+            self.time_edit.setTime(QTime.fromString(default_time, "HH:mm"))
 
         layout.addRow(label_text, self.time_edit)
 
-        # ปุ่มตกลง / ยกเลิก
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
@@ -66,3 +65,4 @@ class SingleTimeEditDialog(QDialog):
 
     def get_time(self):
         return self.time_edit.time().toString("HH:mm")
+    

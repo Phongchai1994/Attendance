@@ -76,6 +76,11 @@ class Employee(TimestampMixin, Base):
         nullable=True,
     )
 
+    resigned_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,

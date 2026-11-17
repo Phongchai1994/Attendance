@@ -100,3 +100,54 @@ class ZKSyncService:
             self.db.rollback()
             stats['error'] = str(e)
             return stats
+
+    def upload_employee_to_zk(self, employee_code, employee_name, uid=None, device_ip="192.168.1.201", port=4370):
+        """ส่งข้อมูลพนักงาน 1 คนไปยังเครื่องสแกนนิ้ว"""
+        from zk import ZK, const
+        
+        target_ip = getattr(self, 'device_ip', getattr(self, 'ip', getattr(self, 'ip_address', device_ip)))
+        target_port = getattr(self, 'port', port)
+        
+        zk = ZK(target_ip, port=target_port, timeout=5)
+        conn = None
+        try:
+            conn = zk.connect()
+            
+            # ดึงรายชื่อผู้ใช้ทั้งหมดในเครื่องมาก่อน เพื่อหาว่ามีพนักงานคนนี้อยู่แล้วหรือไม่
+            users = conn.get_users()
+            existing_user = next((u for u in users if u.user_id == str(employee_code)), None)
+            
+            short_name = employee_name[:20]
+            
+            if existing_user:
+                # ถ้ามีอยู่แล้ว ให้อัปเดตข้อมูล (ใช้ uid เดิมของเครื่อง)
+                conn.set_user(
+                    uid=existing_user.uid,
+                    name=short_name,
+                    privilege=const.USER_DEFAULT,
+                    password=existing_user.password,
+                    group_id=existing_user.group_id,
+                    user_id=str(employee_code)
+                )
+                return {"status": "success", "msg": f"อัปเดตข้อมูล {employee_name} ในเครื่องสแกนสำเร็จ"}
+            else:
+                # ถ้าเป็นคนใหม่ ให้เครื่องสแกนหา uid ว่างให้เอง (รันเลขต่อจากคนล่าสุด)
+                # ปกติ uid ของเครื่อง ZK จะต้องเป็นตัวเลขรันไปเรื่อยๆ (1, 2, 3...)
+                max_uid = max([u.uid for u in users]) if users else 0
+                new_uid = max_uid + 1
+                
+                conn.set_user(
+                    uid=new_uid,
+                    name=short_name,
+                    privilege=const.USER_DEFAULT,
+                    password='',
+                    group_id='',
+                    user_id=str(employee_code)
+                )
+                return {"status": "success", "msg": f"เพิ่มข้อมูล {employee_name} ไปยังเครื่องสแกนสำเร็จ"}
+                
+        except Exception as e:
+            return {"status": "error", "msg": str(e)}
+        finally:
+            if conn:
+                conn.disconnect()
