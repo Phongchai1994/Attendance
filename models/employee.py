@@ -71,11 +71,19 @@ class Employee(TimestampMixin, Base):
         index=True,
     )
 
-    hired_date: Mapped[date | None] = mapped_column(
+    # วันที่บรรจุเข้ารับราชการครั้งแรก
+    first_hired_date: Mapped[date | None] = mapped_column(
         Date,
         nullable=True,
     )
 
+    # วันที่เริ่มปฏิบัติงานที่เรือนจำแห่งนี้
+    start_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    # วันที่สิ้นสุดการปฏิบัติงาน
     resigned_date: Mapped[date | None] = mapped_column(
         Date,
         nullable=True,

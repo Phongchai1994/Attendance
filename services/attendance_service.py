@@ -354,24 +354,55 @@ class AttendanceService:
             status_text='ลาเช้า แต่ไม่พบการสแกนเข้าก่อน 13:00 น.', leave_session='MORNING'
         )
 
+    
     def _build_normal_final_status(
         self,
         in_result: AttendanceCheckResult,
         out_result: AttendanceCheckResult,
     ) -> tuple[str, str]:
-        if in_result.status_code == "MISSING_IN" and out_result.status_code == "MISSING_OUT":
+
+        # ตรวจสอบก่อนว่าระบบมีกฎเวลาครบหรือไม่
+        if in_result.status_code == "RULE_NOT_FOUND":
+            return ("RULE_NOT_FOUND", in_result.status_text)
+
+        if out_result.status_code == "RULE_NOT_FOUND":
+            return ("RULE_NOT_FOUND", out_result.status_text)
+
+        # ไม่มีข้อมูลสแกนทั้งเข้าและออก
+        if (
+            in_result.status_code == "MISSING_IN"
+            and out_result.status_code == "MISSING_OUT"
+        ):
             return ("MISSING_IN_OUT", "ไม่พบข้อมูลสแกนเข้าและออกงาน")
+
         if in_result.status_code == "MISSING_IN":
             return ("MISSING_IN", "ไม่พบข้อมูลสแกนเข้างาน")
+
         if out_result.status_code == "MISSING_OUT":
             return ("MISSING_OUT", "ไม่พบข้อมูลสแกนออกงาน")
-        if in_result.status_code == "LATE" and out_result.status_code == "EARLY_LEAVE":
-            return ("LATE_AND_EARLY", f"มาสาย {in_result.minutes} นาที และออกก่อน {out_result.minutes} นาที")
+
+        # มาสายและออกก่อนเวลา
+        if (
+            in_result.status_code == "LATE"
+            and out_result.status_code == "EARLY_LEAVE"
+        ):
+            return (
+                "LATE_AND_EARLY",
+                f"มาสาย {in_result.minutes} นาที "
+                f"และออกก่อน {out_result.minutes} นาที"
+            )
+
         if in_result.status_code == "LATE":
             return ("LATE", f"มาสาย {in_result.minutes} นาที")
+
         if out_result.status_code == "EARLY_LEAVE":
-            return ("EARLY_LEAVE", f"ออกก่อนเวลา {out_result.minutes} นาที")
+            return (
+                "EARLY_LEAVE",
+                f"ออกก่อนเวลา {out_result.minutes} นาที"
+            )
+
         return ("NORMAL", "มาปฏิบัติงานและออกงานปกติ")
+
 
     # ----------------------------
     # Main Finalize Daily Attendance

@@ -133,7 +133,7 @@ def seed_shift_rules():
         raise
 
     finally:
-        db.close
+        db.close()
 
 
 if __name__ == '__main__':
