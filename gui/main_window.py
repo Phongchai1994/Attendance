@@ -1,9 +1,10 @@
 from datetime import date
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QLabel, QDateEdit, QPushButton, QTabWidget, QMessageBox, QApplication
+    QLabel, QDateEdit, QPushButton, QTabWidget, QMessageBox, QApplication,
+    QListWidget, QStackedWidget,
 )
-from PyQt6.QtCore import QDate, QLocale, QThread, pyqtSignal
+from PyQt6.QtCore import QDate, QLocale, QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QFont
 
 # นำเข้า Tab ต่างๆ
@@ -170,7 +171,6 @@ class ZKSyncThread(QThread):
         finally:
             db.close()
 
-
 class LeaveSyncThread(QThread):
     finished_signal = pyqtSignal(dict)
     error_signal = pyqtSignal(str)
@@ -194,46 +194,99 @@ class AttendanceMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ระบบบริหารจัดการเวลาปฏิบัติงาน (Attendance System)")
-        self.resize(1150, 750)
-        self.setFont(QFont("Tahoma", 10))
+        self.resize(1440, 900)
+        self.setMinimumSize(1100, 700)
 
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
+      
+        # 2. สร้าง Layout สำหรับ Sidebar และพื้นที่แสดงหน้าจอ
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
 
-        # 1. แถบควบคุมด้านบน
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(QLabel("📅 วันที่ตรวจสอบ:"))
-        
-        self.date_edit = QDateEdit()
-        self.date_edit.setLocale(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
-        self.date_edit.setCalendarPopup(True)
-        self.date_edit.setDate(QDate.currentDate())
-        self.date_edit.setDisplayFormat("dd/MM/yyyy")
-        self.date_edit.setMinimumWidth(150)
-        top_layout.addWidget(self.date_edit)
+        # สร้างเมนูด้านซ้าย
+        self.sidebar = QListWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(230)
 
-        self.btn_load = QPushButton("✨ ประมวลผลข้อมูล")
-        self.btn_load.setObjectName("btn_success")
-        self.btn_load.clicked.connect(self.load_data)
-        
-        top_layout.addWidget(self.btn_load)
-        top_layout.addStretch()
-        main_layout.addLayout(top_layout)
-
-        # 2. ระบบ Tabs
+        # ใช้ QTabWidget เดิมเพื่อรักษาการทำงานของโปรแกรม
         self.tabs = QTabWidget()
+        self.tabs.tabBar().hide()
+
+        # สร้างหน้าจอเดิม
         self.home_tab = HomeTab()
         self.dashboard_tab = DashboardTab()
         self.table_tab = TableTab()
-        self.employee_tab = EmployeeTab() # <--- สร้าง Instance
+        self.setup_attendance_toolbar()
+        self.employee_tab = EmployeeTab()
 
-        self.tabs.addTab(self.home_tab, "🏠 หน้าหลัก (Main)")
-        self.tabs.addTab(self.dashboard_tab, "📊 แดชบอร์ด (Dashboard)")
-        self.tabs.addTab(self.table_tab, "📋 ตารางปัจจุบัน")
-        self.tabs.addTab(self.employee_tab, "👥 จัดการพนักงาน") # <--- เพิ่มเข้าหน้าต่างหลัก
+        # ฟังก์ชันสร้างหน้าจอชั่วคราว
+        # สำหรับเมนูที่จะพัฒนาในขั้นตอนถัดไป
+        def create_placeholder(title):
+            page = QWidget()
+            layout = QVBoxLayout(page)
 
-        main_layout.addWidget(self.tabs)
+            heading = QLabel(title)
+            heading.setStyleSheet(
+                "font-size: 24px; font-weight: bold;"
+            )
+
+            description = QLabel(
+                "อยู่ระหว่างการพัฒนา"
+            )
+
+            layout.addWidget(heading)
+            layout.addWidget(description)
+            layout.addStretch()
+
+            return page
+
+        # ลงทะเบียนหน้าจอและเมนู
+        pages = [
+            ("หน้าหลัก", self.home_tab),
+            ("Dashboard", self.dashboard_tab),
+            ("ตรวจเช็กชื่อ", self.table_tab),
+            ("ข้อมูลเจ้าหน้าที่", self.employee_tab),
+            ("หน่วยงาน / สังกัด",
+             create_placeholder("หน่วยงาน / สังกัด")),
+            ("จัดตารางเวร",
+             create_placeholder("จัดตารางเวร")),
+            ("จัดการการลา",
+             create_placeholder("จัดการการลา")),
+            ("ไปราชการ",
+             create_placeholder("ไปราชการ")),
+            ("วันหยุดราชการ",
+             create_placeholder("วันหยุดราชการ")),
+            ("รายงาน",
+             create_placeholder("รายงาน")),
+            ("ตั้งค่าระบบ",
+             create_placeholder("ตั้งค่าระบบ")),
+        ]
+
+        for name, page in pages:
+            self.sidebar.addItem(name)
+            self.tabs.addTab(page, name)
+
+        # เชื่อมการเปลี่ยนเมนูกับหน้าจอ
+        self.sidebar.currentRowChanged.connect(
+            self.tabs.setCurrentIndex
+        )
+
+        # รองรับการเปลี่ยนหน้าจอจากโค้ดเดิม
+        self.tabs.currentChanged.connect(
+            self.sidebar.setCurrentRow
+        )
+
+        content_layout.addWidget(self.sidebar)
+        content_layout.addWidget(self.tabs, 1)
+
+        main_layout.addLayout(content_layout, 1)
+
+        # กำหนดหน้าเริ่มต้น
+        self.sidebar.setCurrentRow(0)
+
 
         # 3. ผูกปุ่มจากหน้า HomeTab เข้ากับฟังก์ชัน
         self.home_tab.btn_sync_zk.clicked.connect(self.sync_zk_data)
@@ -330,6 +383,13 @@ class AttendanceMainWindow(QMainWindow):
         # เคลียร์ตารางเดิม และเปลี่ยนปุ่มเป็นสถานะโหลด
         self.table_tab.clear_table()
         self.btn_load.setText("⏳ กำลังประมวลผล...")
+        self._loaded_attendance_date = None
+        self.update_attendance_date_state()
+
+        self.date_edit.setEnabled(False)
+        self.lbl_loaded_date.setText(
+            "กำลังประมวลผลข้อมูล..."
+        )
         self.btn_load.setEnabled(False)
 
         # สั่ง QThread ให้ไปทำงานเบื้องหลัง
@@ -349,11 +409,135 @@ class AttendanceMainWindow(QMainWindow):
         
         # สลับหน้าไปที่ตาราง และคืนสถานะปุ่ม
         self.tabs.setCurrentIndex(2) # Index 2 คือตารางปัจจุบัน
-        self.btn_load.setText("✨ ประมวลผลข้อมูล")
-        self.btn_load.setEnabled(True)
+        self.btn_load.setText("ประมวลผลข้อมูล")
+        self.date_edit.setEnabled(True)
+
+        self._loaded_attendance_date = (
+            self.table_tab.current_date_obj
+        )
+
+        self.update_attendance_date_state()
+
+        # กรองข้อมูลตามข้อความค้นหาเดิม
+        self.table_tab.filter_table(
+            self.table_tab.search_box.text()
+        )
 
     def on_load_error(self, error_msg):
         """รับข้อผิดพลาดจากเบื้องหลัง มาแสดง Popup"""
         QMessageBox.critical(self, "ข้อผิดพลาด", f"เกิดข้อผิดพลาด:\n{error_msg}")
-        self.btn_load.setText("✨ ประมวลผลข้อมูล")
-        self.btn_load.setEnabled(True)
+        self.btn_load.setText("ประมวลผลข้อมูล")
+        self.date_edit.setEnabled(True)
+        self._loaded_attendance_date = None
+        self.update_attendance_date_state()
+
+        self.lbl_loaded_date.setText(
+            "ประมวลผลข้อมูลไม่สำเร็จ"
+        )
+
+    def setup_attendance_toolbar(self):
+        """สร้างแถบควบคุมเฉพาะหน้าตรวจเช็คชื่อ"""
+
+        page_layout = self.table_tab.layout()
+        page_layout.setContentsMargins(18, 18, 18, 18)
+        page_layout.setSpacing(14)
+
+        # หัวข้อหน้าจอ
+        header = QWidget()
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(3)
+
+        title = QLabel("ตรวจเช็คชื่อประจำวัน")
+        title.setObjectName("page_title")
+
+        description = QLabel(
+            "ตรวจสอบและจัดการข้อมูลการมาปฏิบัติงานของเจ้าหน้าที่"
+        )
+        description.setObjectName("page_description")
+
+        header_layout.addWidget(title)
+        header_layout.addWidget(description)
+
+        # กล่องควบคุมการเลือกวันที่
+        toolbar = QWidget()
+        toolbar.setObjectName("toolbar_card")
+
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(15, 12, 15, 12)
+        toolbar_layout.setSpacing(12)
+
+        date_label = QLabel("วันที่ตรวจสอบ:")
+
+        self.date_edit = QDateEdit()
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.setDate(QDate.currentDate())
+        self.date_edit.setDisplayFormat("dd/MM/yyyy")
+
+        self.date_edit.setLocale(
+            QLocale(
+                QLocale.Language.English,
+                QLocale.Country.UnitedStates
+            )
+        )
+
+        self.date_edit.setMinimumWidth(155)
+        self.date_edit.setMinimumHeight(30)
+
+        # ปุ่มประมวลผลข้อมูล
+        self.btn_load = QPushButton("ประมวลผลข้อมูล")
+        self.btn_load.setObjectName("btn_primary")
+        self.btn_load.setCursor(
+            Qt.CursorShape.PointingHandCursor
+        )
+        self.btn_load.clicked.connect(self.load_data)
+
+        # แสดงวันที่ของข้อมูลที่อยู่ในตารางจริง
+        self.lbl_loaded_date = QLabel("ยังไม่ได้ประมวลผลข้อมูล")
+        self.lbl_loaded_date.setObjectName("page_description")
+        self.lbl_loaded_date.setWordWrap(True)
+
+        toolbar_layout.addWidget(date_label)
+        toolbar_layout.addWidget(self.date_edit)
+        toolbar_layout.addWidget(self.btn_load)
+        toolbar_layout.addStretch()
+        toolbar_layout.addWidget(self.lbl_loaded_date, 1)
+
+        # นำหัวข้อและแถบควบคุมมาไว้ด้านบนช่องค้นหา
+        page_layout.insertWidget(0, header)
+        page_layout.insertWidget(1, toolbar)
+
+        # ป้องกันการแก้ไขข้อมูลผิดวันที่
+        self._loaded_attendance_date = None
+
+        self.date_edit.dateChanged.connect(
+            self.update_attendance_date_state
+        )
+
+        self.update_attendance_date_state()
+
+
+    def update_attendance_date_state(self, *_):
+        """ตรวจสอบว่าวันที่เลือกตรงกับข้อมูลในตารางหรือไม่"""
+
+        loaded_date = self._loaded_attendance_date
+        selected_date = self.date_edit.date().toPyDate()
+
+        if loaded_date is None:
+            self.lbl_loaded_date.setText(
+                "ยังไม่มีข้อมูลที่แสดง"
+            )
+            self.table_tab.table.setEnabled(False)
+
+        elif loaded_date != selected_date:
+            self.lbl_loaded_date.setText(
+                f"ข้อมูลวันที่ {loaded_date:%d/%m/%Y} "
+                "กรุณาประมวลผลวันที่ใหม่ก่อนแก้ไข"
+            )
+            self.table_tab.table.setEnabled(False)
+
+        else:
+            self.lbl_loaded_date.setText(
+                f"วันที่แสดงผล: {loaded_date:%d/%m/%Y}"
+            )
+            self.table_tab.table.setEnabled(True)

@@ -1,23 +1,34 @@
-import sys 
+
+import sys
+
 from PyQt6.QtWidgets import QApplication
 from gui.main_window import AttendanceMainWindow
-from gui.styles import get_modern_stylesheet
+
+from gui.styles import (
+    get_modern_stylesheet,
+    configure_app_font,
+)
+
 
 def main():
     app = QApplication(sys.argv)
 
-    # กำหนด style ให้กับโปรแกรม
-    app.setStyle('Fusion')
+    # กำหนดรูปแบบพื้นฐานของ Qt
+    app.setStyle("Fusion")
 
-    # ใส่ style แบบ modern ให้กับทั้งโปรแกรม
+    # โหลด Font ภาษาไทย
+    font_name = configure_app_font(app)
+    print(f"Application Font: {font_name}")
+
+    # โหลด Theme กลางของโปรแกรม
     app.setStyleSheet(get_modern_stylesheet())
 
-    # เรียกหน้าต่างหลักมาแสดง
+    # แสดงหน้าต่างหลัก
     window = AttendanceMainWindow()
     window.show()
 
-    # รัน loop โปรแกรม
     sys.exit(app.exec())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

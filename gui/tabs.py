@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from gui.dialogs import SingleTimeEditDialog
 from gui.styles import apply_card_shadow
+from gui.leave_worker import LeaveSaveThread
 
 
 class HomeTab(QWidget):
@@ -61,27 +62,56 @@ class DashboardTab(QWidget):
         layout.addStretch()
 
     def _create_stat_card(self, title, value, bg_color):
+
         card = QWidget()
-        card.setStyleSheet(f"background-color: {bg_color}; border-radius: 12px; color: white;")
-        card.setMinimumSize(250, 130)
-        
-        # ใส่เงาให้การ์ดเด้งออกมาจากพื้นหลัง
+
+        card.setStyleSheet(f"""
+            QWidget {{
+                background-color: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                border-left: 5px solid {bg_color};
+                border-radius: 12px;
+            }}
+
+            QLabel {{
+                border: none;
+                background-color: transparent;
+            }}
+        """)
+
+        card.setMinimumSize(230, 145)
+
         apply_card_shadow(card)
-        
+
         card_layout = QVBoxLayout(card)
-        
+        card_layout.setContentsMargins(22, 16, 22, 16)
+        card_layout.setSpacing(8)
+
         lbl_title = QLabel(title)
-        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 10px;")
-        
+        lbl_title.setStyleSheet(
+            "color: #64748B; font-weight: bold;"
+        )
+
         lbl_value = QLabel(value)
-        lbl_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_value.setStyleSheet("font-size: 48px; font-weight: bold; margin-bottom: 10px;")
-        
+        lbl_value.setStyleSheet(f"""
+            color: {bg_color};
+            font-size: 32pt;
+            font-weight: bold;
+        """)
+
+        lbl_unit = QLabel("คน")
+        lbl_unit.setStyleSheet("color: #94A3B8;")
+
         card_layout.addWidget(lbl_title)
         card_layout.addWidget(lbl_value)
-        
-        return {'widget': card, 'value_label': lbl_value}
+        card_layout.addWidget(lbl_unit)
+        card_layout.addStretch()
+
+        return {
+            "widget": card,
+            "value_label": lbl_value,
+        }
+
 
     def update_stats(self, total, normal, late, leave, absent):
         self.card_total['value_label'].setText(str(total))
@@ -110,15 +140,55 @@ class TableTab(QWidget):
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(["รหัส", "ชื่อ-สกุล", "ตำแหน่ง", "ประเภทการลา", "สถานะ", "เข้า", "ออก", "รายละเอียด"])
 
+        # สลับสีพื้นหลังแต่ละแถว
+        self.table.setAlternatingRowColors(True)
+
+        # ลดเส้นตารางที่ไม่จำเป็น
+        self.table.setShowGrid(False)
+
+        # ป้องกันการแก้ไข Cell โดยตรง
+        # ใช้เมนูคลิกขวาสำหรับแก้ไขข้อมูลแทน
+        self.table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+
+        # ปรับความสูงของแถวให้เหมาะกับภาษาไทย
+        self.table.verticalHeader().setDefaultSectionSize(42)
+        self.table.verticalHeader().setMinimumWidth(46)
+
+        self.table.horizontalHeader().setMinimumHeight(44)
+
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+
+        # กำหนดความกว้างเริ่มต้นของแต่ละคอลัมน์
+        column_widths = [
+            90,    # รหัส
+            230,   # ชื่อ-สกุล
+            220,   # ตำแหน่ง
+            180,   # ประเภทการลา
+            160,   # สถานะ
+            80,    # เวลาเข้า
+            80,    # เวลาออก
+            250,   # รายละเอียด
+        ]
+
+        for index, width in enumerate(column_widths):
+            self.table.setColumnWidth(index, width)
+
+        self.table.horizontalHeader().setStretchLastSection(
+            True
+        )
+
+
         # 👇 1. แก้คอลัมน์ไม่เต็มจอ: บังคับให้คอลัมน์สุดท้าย (รายละเอียด) ยืดจนสุดขอบหน้าต่างเสมอ
         self.table.horizontalHeader().setStretchLastSection(True)
         
+        
         # 👇 2. แก้ตัวเลขแถวขาด: ขยายความกว้างของแถบตัวเลขด้านซ้าย เพื่อรองรับเลข 2-3 หลัก
         self.table.verticalHeader().setMinimumWidth(45)
-        
-        # 👇 3. เพิ่มความสูงของแต่ละบรรทัดอีกนิด เพื่อไม่ให้ตัวหนังสือและเลขเบียดขอบบนล่าง
-        self.table.verticalHeader().setDefaultSectionSize(35)
-        
+                
         # 2. 🖱️ เปิดให้คลุมดำกด Ctrl / Shift เลือกได้หลายบรรทัด
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -165,66 +235,125 @@ class TableTab(QWidget):
         self.table.setItem(row, 6, QTableWidgetItem(time_out))     # <--- ขยับเป็นช่อง 6
         self.table.setItem(row, 7, QTableWidgetItem(detail))       # <--- ขยับเป็นช่อง 7
         
-        self.table.resizeColumnsToContents()
 
+    
     def show_context_menu(self, pos):
         item = self.table.itemAt(pos)
-        if not item: return
-        
+
+        if not item:
+            return
+
         clicked_row = item.row()
-        
-        # เช็คว่าแถวที่คลิกขวา อยู่ในกลุ่มที่คลุมดำไว้หรือไม่ ถ้าไม่ ให้เลือกแค่แถวที่คลิก
-        selected_rows = [r.row() for r in self.table.selectionModel().selectedRows()]
+
+        # รองรับการเลือกเจ้าหน้าที่หลายคน
+        selected_rows = [
+            r.row()
+            for r in self.table.selectionModel().selectedRows()
+        ]
+
         if clicked_row not in selected_rows:
+            self.table.clearSelection()
             self.table.selectRow(clicked_row)
             selected_rows = [clicked_row]
 
+        count = len(selected_rows)
         menu = QMenu(self)
-        
-        # --- กลุ่มที่ 1: แก้ไขเวลา ---
-        action_in = menu.addAction(f"📥 แก้ไขเวลาเข้า ({len(selected_rows)} รายการ)")
-        action_out = menu.addAction(f"📤 แก้ไขเวลาออก ({len(selected_rows)} รายการ)")
-        menu.addSeparator()
-        
-        # --- กลุ่มที่ 2: ประเภทการลามาตรฐาน ---
-        action_sick = menu.addAction(f"💊 กำหนดเป็น: ลาป่วย ({len(selected_rows)} รายการ)")
-        action_personal = menu.addAction(f"📝 กำหนดเป็น: ลากิจ ({len(selected_rows)} รายการ)")
-        action_vacation = menu.addAction(f"🏖️ กำหนดเป็น: ลาพักผ่อน ({len(selected_rows)} รายการ)")
-        action_maternity = menu.addAction(f"👶 กำหนดเป็น: ลาคลอด ({len(selected_rows)} รายการ)")
-        action_ordination = menu.addAction(f"🪷 กำหนดเป็น: ลาอุปสมบท ({len(selected_rows)} รายการ)")
-        action_study = menu.addAction(f"📚 กำหนดเป็น: ลาศึกษาต่อ ({len(selected_rows)} รายการ)")
+
+        # กลุ่มแก้ไขเวลา
+        action_in = menu.addAction(
+            f"แก้ไขเวลาเข้า ({count} รายการ)"
+        )
+
+        action_out = menu.addAction(
+            f"แก้ไขเวลาออก ({count} รายการ)"
+        )
+
         menu.addSeparator()
 
-        # --- กลุ่มที่ 3: ปฏิบัติหน้าที่พิเศษ ---
-        action_duty = menu.addAction(f"💼 กำหนดเป็น: ไปราชการ ({len(selected_rows)} รายการ)")
-        action_acting = menu.addAction(f"⭐ กำหนดเป็น: รักษาราชการแทน ผบ. ({len(selected_rows)} รายการ)")
-        action_hospital = menu.addAction(f"🏥 กำหนดเป็น: ควบคุมผู้ต้องขังป่วย รพ. ({len(selected_rows)} รายการ)")
-        
-        action = menu.exec(self.table.viewport().mapToGlobal(pos))
-        
-        # ดักจับการทำงานแต่ละเมนู
+        # ประเภทสถานะและช่วงเวลาการลา
+        groups = [
+            [
+                ("NO_FACE_SCAN", "ไม่สแกนหน้า", "FULL_DAY"),
+            ],
+            [
+                ("SICK", "ลาป่วย", "FULL_DAY"),
+                ("SICK_MORNING", "ลาป่วยครึ่งวันเช้า", "MORNING"),
+                ("SICK_AFTERNOON", "ลาป่วยครึ่งวันบ่าย", "AFTERNOON"),
+            ],
+            [
+                ("VACATION", "ลาพักผ่อน", "FULL_DAY"),
+                ("VACATION_MORNING", "ลาพักผ่อนครึ่งวันเช้า", "MORNING"),
+                ("VACATION_AFTERNOON", "ลาพักผ่อนครึ่งวันบ่าย", "AFTERNOON"),
+            ],
+            [
+                ("PERSONAL", "ลากิจ", "FULL_DAY"),
+                ("PERSONAL_MORNING", "ลากิจครึ่งวันเช้า", "MORNING"),
+                ("PERSONAL_AFTERNOON", "ลากิจครึ่งวันบ่าย", "AFTERNOON"),
+            ],
+            [
+                ("MATERNITY", "ลาคลอด", "FULL_DAY"),
+                ("ORDINATION", "ลาอุปสมบท", "FULL_DAY"),
+                ("STUDY", "ลาศึกษาต่อ", "FULL_DAY"),
+            ],
+            [
+                ("OFFICIAL_DUTY", "ไปราชการ", "FULL_DAY"),
+                ("ACTING_COMMANDER", "รักษาราชการแทน ผบ.", "FULL_DAY"),
+                ("HOSPITAL_ESCORT", "ควบคุมผู้ต้องขังป่วย รพ.", "FULL_DAY"),
+            ],
+        ]
+
+        action_map = {}
+
+        for index, group in enumerate(groups):
+            if index > 0:
+                menu.addSeparator()
+
+            for code, label, session in group:
+                action = menu.addAction(
+                    f"{label} ({count} รายการ)"
+                )
+                action_map[action] = (code, label, session)
+
+        # เมนูลบสถานะที่กำหนดเอง
+        menu.addSeparator()
+
+        action_delete = menu.addAction(
+            f"🗑️ ลบข้อมูลที่กำหนดเอง ({count} รายการ)"
+        )
+
+        action_map[action_delete] = (
+            "CANCEL_MANUAL",
+            "ลบข้อมูลที่กำหนดเอง",
+            "FULL_DAY",
+        )
+
+        # ตรวจสอบเมนูที่ผู้ใช้เลือก
+        action = menu.exec(
+            self.table.viewport().mapToGlobal(pos)
+        )
+
         if action == action_in:
-            self.edit_multi_time(selected_rows, is_time_in=True)
+            self.edit_multi_time(
+                selected_rows,
+                is_time_in=True,
+            )
+
         elif action == action_out:
-            self.edit_multi_time(selected_rows, is_time_in=False)
-        elif action == action_sick:
-            self.set_multi_status(selected_rows, "SICK", "ลาป่วย")
-        elif action == action_personal:
-            self.set_multi_status(selected_rows, "PERSONAL", "ลากิจ")
-        elif action == action_vacation:
-            self.set_multi_status(selected_rows, "VACATION", "ลาพักผ่อน")
-        elif action == action_maternity:
-            self.set_multi_status(selected_rows, "MATERNITY", "ลาคลอด")
-        elif action == action_ordination:
-            self.set_multi_status(selected_rows, "ORDINATION", "ลาอุปสมบท")
-        elif action == action_study:
-            self.set_multi_status(selected_rows, "STUDY", "ลาศึกษาต่อ")
-        elif action == action_duty:
-            self.set_multi_status(selected_rows, "OFFICIAL_DUTY", "ไปราชการ")
-        elif action == action_acting:
-            self.set_multi_status(selected_rows, "ACTING_COMMANDER", "รักษาราชการแทน ผบ.")
-        elif action == action_hospital:
-            self.set_multi_status(selected_rows, "HOSPITAL_ESCORT", "ควบคุมผู้ต้องขังป่วย รพ.")
+            self.edit_multi_time(
+                selected_rows,
+                is_time_in=False,
+            )
+
+        elif action in action_map:
+            code, label, session = action_map[action]
+
+            self.set_multi_status(
+                selected_rows,
+                code,
+                label,
+                leave_session=session,
+            )
+
 
     def edit_multi_time(self, rows, is_time_in):
         col, title, label = (5, "แก้ไขเวลาเข้า", "เวลาเข้าใหม่:") if is_time_in else (6, "แก้ไขเวลาออก", "เวลาออกใหม่:")
@@ -306,98 +435,219 @@ class TableTab(QWidget):
             finally:
                 db.close()
 
-    def set_multi_status(self, rows, status_code, detail_text):
-        from database.session import SessionLocal
-        from models.employee import Employee
-        from models.employee_leave import EmployeeLeave
-        from models.leave_type import LeaveType
-        
-        db = SessionLocal()
-        success_count = 0
-        not_found = []
-        
-        try:
-            leave_type = db.query(LeaveType).filter(LeaveType.leave_code == status_code).first()
-            if not leave_type:
-                QMessageBox.critical(self, "ข้อผิดพลาด", f"ไม่พบรหัส {status_code} ในตาราง leave_types\nกรุณาเพิ่มข้อมูลประเภทการลาก่อน")
+    
+    def set_multi_status(
+        self,
+        rows,
+        status_code,
+        detail_text,
+        leave_session="FULL_DAY",
+    ):
+        target_date = getattr(self, "current_date_obj", None)
+
+        if target_date is None:
+            QMessageBox.warning(
+                self,
+                "แจ้งเตือน",
+                "กรุณาโหลดข้อมูลประจำวันที่ต้องการก่อน",
+            )
+            return
+
+        # ป้องกันการบันทึกซ้อน
+        worker = getattr(self, "_status_thread", None)
+
+        if worker is not None and worker.isRunning():
+            return
+
+        # ป้องกันการบันทึกพร้อมกับงาน Sync หรือประมวลผล
+        main_window = self.window()
+
+        for name in (
+            "loader_thread", "zk_thread", "leave_thread"
+        ):
+            other_worker = getattr(main_window, name, None)
+
+            if other_worker and other_worker.isRunning():
+                QMessageBox.warning(
+                    self,
+                    "แจ้งเตือน",
+                    "กรุณารอให้งานปัจจุบันเสร็จสิ้นก่อน",
+                )
                 return
 
-            for row in rows:
-                emp_code = str(self.table.item(row, 0).text()).strip()
-                emp = db.query(Employee).filter(Employee.employee_code == emp_code).first()
-                
-                if not emp:
-                    not_found.append(emp_code)
-                    continue
-                
-                record = db.query(EmployeeLeave).filter(
-                    EmployeeLeave.employee_id == emp.id,
-                    EmployeeLeave.leave_date == self.current_date_obj
-                ).first()
-                
-                if record:
-                    record.leave_type_id = leave_type.id
-                    record.leave_session = "FULL_DAY"
-                    record.approval_status = "APPROVED"
-                    record.source = "MANUAL"
-                    record.note = detail_text
-                else:
-                    unique_ref = f"MANUAL_{emp.id}_{self.current_date_obj.strftime('%Y%m%d')}_{status_code}"
-                    
-                    new_leave = EmployeeLeave(
-                        employee_id=emp.id,
-                        leave_type_id=leave_type.id,
-                        leave_date=self.current_date_obj,
-                        leave_session="FULL_DAY",
-                        approval_status="APPROVED",
-                        source="MANUAL",
-                        source_ref=unique_ref,
-                        note=detail_text
-                    )
-                    db.add(new_leave)
-                    
-                # 3. อัปเดต UI ในตารางให้เห็นผลทันที
-                status_item = QTableWidgetItem(status_code)
-                
-                # กลุ่มลามาตรฐาน (สีน้ำเงิน)
-                if status_code in ["SICK", "PERSONAL", "VACATION", "MATERNITY", "ORDINATION", "STUDY"]:
-                    status_item.setForeground(Qt.GlobalColor.blue)
-                    leave_label = detail_text
-                    
-                # กลุ่มราชการ (สีม่วง)
-                elif status_code == "OFFICIAL_DUTY":
-                    status_item.setForeground(Qt.GlobalColor.darkMagenta)
-                    leave_label = "ไปราชการ"
-                    
-                # กลุ่มควบคุมป่วย (สีเหลือง/ส้ม)
-                elif status_code == "HOSPITAL_ESCORT":
-                    status_item.setForeground(Qt.GlobalColor.darkYellow)
-                    leave_label = "ควบคุมป่วย รพ."
-                    
-                # รักษาราชการแทน (สีฟ้าอมเขียว)
-                else:
-                    status_item.setForeground(Qt.GlobalColor.darkCyan)
-                    leave_label = "รักษาราชการแทน"
-                    
-                self.table.setItem(row, 4, status_item)                    
-                self.table.setItem(row, 3, QTableWidgetItem(leave_label))  
-                self.table.setItem(row, 7, QTableWidgetItem(f"{detail_text} (รอประมวลผลใหม่)"))  
-                self.table.setItem(row, 5, QTableWidgetItem("-"))          
-                self.table.setItem(row, 6, QTableWidgetItem("-"))          
-                
-                success_count += 1
-                
-            db.commit()
-            
-            if not_found:
-                QMessageBox.warning(self, "แจ้งเตือน", f"บันทึกได้ {success_count} รายการ\nแต่หารหัสพนักงานเหล่านี้ไม่เจอใน DB:\n{', '.join(not_found)}\n\n💡 กรุณากดปุ่ม 'ประมวลผลข้อมูล' อีกครั้งเพื่อสรุปผล")
-            else:
-                QMessageBox.information(self, "สำเร็จ", f"บันทึก '{detail_text}' ลงประวัติการลาเรียบร้อย {success_count} รายการ\n\n💡 กรุณากดปุ่ม 'ประมวลผลข้อมูล' อีกครั้งเพื่อสรุปผลลงตารางรายงาน")
-        except Exception as e:
-            db.rollback()
-            QMessageBox.critical(self, "ข้อผิดพลาด DB", f"บันทึกสถานะไม่สำเร็จ:\n{str(e)}")
-        finally:
-            db.close()
+        codes = [
+            self.table.item(row, 0).text().strip()
+            for row in rows
+            if self.table.item(row, 0) is not None
+        ]
+
+        if not codes:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "ยืนยันการบันทึก",
+            f"กำหนดสถานะ: {detail_text}\n"
+            f"วันที่: {target_date:%d/%m/%Y}\n"
+            f"จำนวน: {len(codes)} คน\n\n"
+            "รายการ Manual เดิมอาจถูกแทนที่",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._pending_status = (
+            status_code,
+            detail_text,
+            leave_session,
+        )
+
+        self._status_thread = LeaveSaveThread(
+            employee_codes=codes,
+            target_date=target_date,
+            status_code=status_code,
+            detail_text=detail_text,
+            leave_session=leave_session,
+            parent=self,
+        )
+
+        self._status_thread.success_signal.connect(
+            self.on_status_saved
+        )
+
+        self._status_thread.error_signal.connect(
+            self.on_status_error
+        )
+
+        # ป้องกันการเปลี่ยนวันที่ระหว่างบันทึก
+        main_window.setEnabled(False)
+
+        self._status_thread.start()
+
+
+    def on_status_saved(self, result):
+        self.window().setEnabled(True)
+
+        status_code, detail_text, leave_session = (
+            self._pending_status
+        )
+
+        saved_codes = set(result["saved"])
+
+        # กำหนดสีตามประเภทสถานะ
+        if status_code == "NO_FACE_SCAN":
+            color = Qt.GlobalColor.darkYellow
+
+        elif status_code in (
+            "OFFICIAL_DUTY", "ACTING_COMMANDER"
+        ):
+            color = Qt.GlobalColor.darkMagenta
+
+        elif status_code == "HOSPITAL_ESCORT":
+            color = Qt.GlobalColor.darkYellow
+
+        else:
+            color = Qt.GlobalColor.blue
+
+        for row in range(self.table.rowCount()):
+
+            item = self.table.item(row, 0)
+
+            if not item or item.text() not in saved_codes:
+                continue
+
+            # กรณียกเลิกสถานะ Manual
+            if status_code == "CANCEL_MANUAL":
+
+                status_item = QTableWidgetItem("PENDING_REVIEW")
+
+                status_item.setForeground(
+                    Qt.GlobalColor.darkYellow
+                )
+
+                self.table.setItem(
+                    row, 3, QTableWidgetItem("-")
+                )
+
+                self.table.setItem(
+                    row, 4, status_item
+                )
+
+                self.table.setItem(
+                    row, 7,
+                    QTableWidgetItem(
+                        "ลบสถานะ Manual แล้ว / รอตรวจสอบใหม่"
+                    ),
+                )
+
+                continue
+
+
+            status_item = QTableWidgetItem(status_code)
+            status_item.setForeground(color)
+
+            self.table.setItem(row, 4, status_item)
+
+            leave_label = (
+                "-" if status_code == "NO_FACE_SCAN"
+                else detail_text
+            )
+
+            self.table.setItem(
+                row, 3,
+                QTableWidgetItem(leave_label),
+            )
+
+            self.table.setItem(
+                row, 7,
+                QTableWidgetItem(
+                    f"{detail_text} (บันทึกแล้ว)"
+                ),
+            )
+
+            # ลาเต็มวันเท่านั้นที่ไม่ต้องแสดงเวลา
+            # ลาครึ่งวันต้องรักษาเวลาเข้าและออกเดิม
+            if (
+                leave_session == "FULL_DAY"
+                and status_code != "NO_FACE_SCAN"
+            ):
+                self.table.setItem(
+                    row, 5, QTableWidgetItem("-")
+                )
+                self.table.setItem(
+                    row, 6, QTableWidgetItem("-")
+                )
+
+        message = (
+            f"บันทึกสำเร็จ {len(saved_codes)} รายการ"
+        )
+
+        if result["skipped"]:
+            message += (
+                "\n\nรายการที่ข้าม:\n"
+                + "\n".join(result["skipped"])
+            )
+
+            QMessageBox.warning(
+                self, "ผลการบันทึก", message
+            )
+        else:
+            QMessageBox.information(
+                self, "สำเร็จ", message
+            )
+
+    def on_status_error(self, error_msg):
+        self.window().setEnabled(True)
+
+        QMessageBox.critical(
+            self,
+            "ข้อผิดพลาด",
+            f"บันทึกข้อมูลไม่สำเร็จ:\n{error_msg}",
+        )
+
 
 
 from PyQt6.QtWidgets import QFormLayout, QGroupBox, QHeaderView, QDateEdit

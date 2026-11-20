@@ -454,10 +454,43 @@ class AttendanceService:
         # -----------------------------------
         # ประเมินผลการลา
         # -----------------------------------
-        if leave is not None and leave.leave_session == 'FULL_DAY':
-            result.leave_session = 'FULL_DAY'
-            result.final_status_code = 'LEAVE_FULL_DAY'
-            result.final_status_text = 'ลาเต็มวัน'
+        
+        # ล้างผลการประมวลผลเก่า
+        result.roster_id = roster_id_val
+        result.shift_code = shift_code_val
+        result.leave_session = None
+        result.first_in_at = None
+        result.last_out_at = None
+        result.evening_rest_out_at = None
+        result.morning_return_in_at = None
+        result.late_minutes = 0
+        result.early_leave_minutes = 0
+
+        # ไม่สแกนหน้า เป็นสถานะพิเศษ ไม่ใช่การลา
+        if (
+            leave is not None
+            and leave.leave_type.leave_code == "NO_FACE_SCAN"
+        ):
+            result.final_status_code = "NO_FACE_SCAN"
+            result.final_status_text = "ไม่สแกนหน้า"
+
+            # หากมีข้อมูลลงเวลาจริง ให้แสดงตามข้อมูลเดิม
+            if roster and shift_type and shift_type.shift_code == "NORMAL":
+                in_result = self._evaluate_normal_in(
+                    employee_id, roster
+                )
+                out_result = self._evaluate_normal_out(
+                    employee_id, roster
+                )
+
+                result.first_in_at = in_result.punch_time
+                result.last_out_at = out_result.punch_time
+
+        # ลาเต็มวัน
+        elif leave is not None and leave.leave_session == "FULL_DAY":
+            result.leave_session = "FULL_DAY"
+            result.final_status_code = "LEAVE_FULL_DAY"
+            result.final_status_text = "ลาเต็มวัน"
 
         elif leave is not None and leave.leave_session == "MORNING":
             end_of_day = self._make_datetime(duty_date, time(23, 59, 59))
