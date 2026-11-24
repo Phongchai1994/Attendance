@@ -1,5 +1,6 @@
 
 import sys
+from PyQt6.QtCore import QLocale
 
 from PyQt6.QtWidgets import QApplication
 from gui.main_window import AttendanceMainWindow
@@ -11,6 +12,13 @@ from gui.styles import (
 
 
 def main():
+    # ใช้เลขอารบิกและรูปแบบวันที่สากล
+    QLocale.setDefault(
+        QLocale(
+            QLocale.Language.English,
+            QLocale.Country.UnitedStates
+        )
+    )
     app = QApplication(sys.argv)
 
     # กำหนดรูปแบบพื้นฐานของ Qt

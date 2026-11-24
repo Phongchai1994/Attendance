@@ -398,42 +398,93 @@ class AttendanceMainWindow(QMainWindow):
         self.loader_thread.error_signal.connect(self.on_load_error)
         self.loader_thread.start()
 
+    
     def on_load_finished(self, records, stats):
-        """รับข้อมูลจากเบื้องหลัง มาวาดลงหน้าต่าง UI"""
-        for r in records:
-            # 👇 เพิ่ม r["position"] เข้ามาแทรกกลาง
-            self.table_tab.add_row(r["code"], r["name"], r["position"], r["leave_type"], r["status"], r["in_time"], r["out_time"], r["detail"])
-        
-        # อัปเดตตัวเลขหน้า Dashboard
-        self.dashboard_tab.update_stats(stats['total'], stats['normal'], stats['late'], stats['leave'], stats['absent'])
-        
-        # สลับหน้าไปที่ตาราง และคืนสถานะปุ่ม
-        self.tabs.setCurrentIndex(2) # Index 2 คือตารางปัจจุบัน
-        self.btn_load.setText("ประมวลผลข้อมูล")
-        self.date_edit.setEnabled(True)
+        """แสดงผลข้อมูล และคืนสถานะปุ่มเสมอ"""
+        try:
+            table = self.table_tab.table
+            table.setUpdatesEnabled(False)
 
-        self._loaded_attendance_date = (
-            self.table_tab.current_date_obj
-        )
+            try:
+                for r in records:
+                    self.table_tab.add_row(
+                        r["code"],
+                        r["name"],
+                        r["position"],
+                        r["leave_type"],
+                        r["status"],
+                        r["in_time"],
+                        r["out_time"],
+                        r["detail"],
+                    )
+            finally:
+                table.setUpdatesEnabled(True)
 
-        self.update_attendance_date_state()
+            self.dashboard_tab.update_stats(
+                stats["total"],
+                stats["normal"],
+                stats["late"],
+                stats["leave"],
+                stats["absent"],
+            )
 
-        # กรองข้อมูลตามข้อความค้นหาเดิม
-        self.table_tab.filter_table(
-            self.table_tab.search_box.text()
-        )
+            # ใช้วันที่ที่ Worker ประมวลผลจริง
+            self._loaded_attendance_date = (
+                self.loader_thread.target_date
+            )
 
+            self.table_tab.current_date_obj = (
+                self._loaded_attendance_date
+            )
+
+            self.table_tab.current_date_str = (
+                self._loaded_attendance_date.strftime("%d/%m/%Y")
+            )
+
+            self.table_tab.filter_table(
+                self.table_tab.search_box.text()
+            )
+
+            self.tabs.setCurrentIndex(2)
+
+        except Exception as e:
+            self._loaded_attendance_date = None
+            QMessageBox.critical(
+                self,
+                "ข้อผิดพลาด",
+                f"แสดงผลข้อมูลไม่สำเร็จ:\n{e}",
+            )
+
+        finally:
+            # สำคัญ: ต้องคืนสถานะปุ่มทุกครั้ง
+            self.btn_load.setText("ประมวลผลข้อมูล")
+            self.btn_load.setEnabled(True)
+            self.date_edit.setEnabled(True)
+            self.update_attendance_date_state()
+
+
+    
     def on_load_error(self, error_msg):
-        """รับข้อผิดพลาดจากเบื้องหลัง มาแสดง Popup"""
-        QMessageBox.critical(self, "ข้อผิดพลาด", f"เกิดข้อผิดพลาด:\n{error_msg}")
-        self.btn_load.setText("ประมวลผลข้อมูล")
-        self.date_edit.setEnabled(True)
+        """คืนสถานะหน้าจอแม้การประมวลผลล้มเหลว"""
+
         self._loaded_attendance_date = None
+
+        self.btn_load.setText("ประมวลผลข้อมูล")
+        self.btn_load.setEnabled(True)
+        self.date_edit.setEnabled(True)
+
         self.update_attendance_date_state()
 
         self.lbl_loaded_date.setText(
-            "ประมวลผลข้อมูลไม่สำเร็จ"
+            "ประมวลผลไม่สำเร็จ กรุณาตรวจสอบข้อผิดพลาด"
         )
+
+        QMessageBox.critical(
+            self,
+            "ข้อผิดพลาด",
+            f"เกิดข้อผิดพลาด:\n{error_msg}",
+        )
+
 
     def setup_attendance_toolbar(self):
         """สร้างแถบควบคุมเฉพาะหน้าตรวจเช็คชื่อ"""
@@ -517,27 +568,32 @@ class AttendanceMainWindow(QMainWindow):
         self.update_attendance_date_state()
 
 
+    
     def update_attendance_date_state(self, *_):
-        """ตรวจสอบว่าวันที่เลือกตรงกับข้อมูลในตารางหรือไม่"""
+        """ตรวจสอบวันที่ที่เลือกกับวันที่ของข้อมูลในตาราง"""
 
         loaded_date = self._loaded_attendance_date
         selected_date = self.date_edit.date().toPyDate()
 
         if loaded_date is None:
             self.lbl_loaded_date.setText(
-                "ยังไม่มีข้อมูลที่แสดง"
+                "ยังไม่ได้โหลดข้อมูล กรุณากดประมวลผล"
             )
             self.table_tab.table.setEnabled(False)
 
         elif loaded_date != selected_date:
             self.lbl_loaded_date.setText(
-                f"ข้อมูลวันที่ {loaded_date:%d/%m/%Y} "
-                "กรุณาประมวลผลวันที่ใหม่ก่อนแก้ไข"
+                f"กำลังแสดงข้อมูลวันที่ "
+                f"{loaded_date:%d/%m/%Y} "
+                "กรุณากดประมวลผลเพื่อโหลดวันที่ใหม่"
             )
-            self.table_tab.table.setEnabled(False)
+
+            # ให้ตารางยังเลื่อนและค้นหาข้อมูลได้
+            self.table_tab.table.setEnabled(True)
 
         else:
             self.lbl_loaded_date.setText(
                 f"วันที่แสดงผล: {loaded_date:%d/%m/%Y}"
             )
             self.table_tab.table.setEnabled(True)
+

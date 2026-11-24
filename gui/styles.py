@@ -3,26 +3,61 @@ from PyQt6.QtWidgets import QGraphicsDropShadowEffect
 from PyQt6.QtGui import QColor, QFont, QFontDatabase
 
 
+
 def configure_app_font(app):
-    """เลือก Font ภาษาไทยที่มีอยู่ในเครื่อง"""
+    """ตั้งค่าฟอนต์ภาษาไทยสำหรับโปรแกรมทั้งหมด"""
 
-    available_fonts = set(QFontDatabase.families())
+    available_fonts = QFontDatabase.families()
 
-    font_options = [
-        ("Sarabun", 12),
-        ("TH Sarabun PSK", 16),
-        ("Noto Sans Thai", 11),
-        ("Tahoma", 11),
+    # แสดงฟอนต์ภาษาไทยที่ตรวจพบ
+    thai_fonts = [
+        family for family in available_fonts
+        if any(
+            keyword in family.lower()
+            for keyword in ("sarabun", "สารบรรณ", "noto sans thai")
+        )
     ]
 
-    for family, size in font_options:
-        if family in available_fonts:
-            app.setFont(QFont(family, size))
-            return family
+    print("Thai Fonts Found:", thai_fonts)
 
+    # ลำดับความสำคัญของฟอนต์
+    font_options = [
+        ("Sarabun", 12),
+        ("Noto Sans Thai", 11),
+        ("TH Sarabun New", 16),
+        ("TH SarabunPSK", 16),
+        ("TH Sarabun PSK", 16),
+    ]
+
+    # ใช้ชื่อ Font ที่ Windows / Qt ตรวจพบจริง
+    font_lookup = {
+        name.lower(): name
+        for name in available_fonts
+    }
+
+    for family, size in font_options:
+        actual_name = font_lookup.get(family.lower())
+
+        if actual_name:
+            font = QFont(actual_name, size)
+            app.setFont(font)
+
+            print("Selected Font:", actual_name)
+            return actual_name
+
+    # ใช้ฟอนต์สำรองเมื่อไม่มีฟอนต์ที่ต้องการ
     app.setFont(QFont("Segoe UI", 11))
+    print("ไม่พบฟอนต์ Sarabun ในเครื่อง")
     return "Segoe UI"
 
+def to_arabic_digits(value):
+    """แปลงเลขไทย ๐-๙ เป็นเลขอารบิก 0-9"""
+    thai_digits = "๐๑๒๓๔๕๖๗๘๙"
+    arabic_digits = "0123456789"
+
+    return str(value).translate(
+        str.maketrans(thai_digits, arabic_digits)
+    )
 
 def get_modern_stylesheet():
     return """

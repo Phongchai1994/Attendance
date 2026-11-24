@@ -5,8 +5,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from gui.dialogs import SingleTimeEditDialog
-from gui.styles import apply_card_shadow
+from gui.styles import apply_card_shadow, to_arabic_digits
 from gui.leave_worker import LeaveSaveThread
+
 
 
 class HomeTab(QWidget):
@@ -231,13 +232,36 @@ class TableTab(QWidget):
         else: status_item.setForeground(Qt.GlobalColor.darkGreen)
 
         self.table.setItem(row, 4, status_item)                    # <--- ขยับเป็นช่อง 4
-        self.table.setItem(row, 5, QTableWidgetItem(time_in))      # <--- ขยับเป็นช่อง 5
-        self.table.setItem(row, 6, QTableWidgetItem(time_out))     # <--- ขยับเป็นช่อง 6
-        self.table.setItem(row, 7, QTableWidgetItem(detail))       # <--- ขยับเป็นช่อง 7
+        # แสดงเลขอารบิกในเวลาเข้า เวลาออก และรายละเอียด
+        self.table.setItem(
+            row, 5, QTableWidgetItem(to_arabic_digits(time_in))
+        )
+
+        self.table.setItem(
+            row, 6, QTableWidgetItem(to_arabic_digits(time_out))
+        )
+
+        self.table.setItem(
+            row, 7, QTableWidgetItem(to_arabic_digits(detail))
+        )
         
 
     
     def show_context_menu(self, pos):
+
+        main_window = self.window()
+
+        if (
+            getattr(main_window, "_loaded_attendance_date", None)
+            != main_window.date_edit.date().toPyDate()
+        ):
+            QMessageBox.information(
+                self,
+                "วันที่ข้อมูลไม่ตรงกัน",
+                "กรุณากดประมวลผลข้อมูลสำหรับวันที่เลือก "
+                "ก่อนแก้ไขรายการ",
+            )
+            return
         item = self.table.itemAt(pos)
 
         if not item:
@@ -318,7 +342,7 @@ class TableTab(QWidget):
         menu.addSeparator()
 
         action_delete = menu.addAction(
-            f"🗑️ ลบข้อมูลที่กำหนดเอง ({count} รายการ)"
+            f"🗑️ ลบสถานะและเวลา Manual ({count} รายการ)"
         )
 
         action_map[action_delete] = (
@@ -522,14 +546,22 @@ class TableTab(QWidget):
             self.on_status_error
         )
 
-        # ป้องกันการเปลี่ยนวันที่ระหว่างบันทึก
-        main_window.setEnabled(False)
+        # ปิดเฉพาะส่วนที่อาจทำให้บันทึกผิดวันที่
+        self.table.setEnabled(False)
+        main_window.date_edit.setEnabled(False)
+        main_window.btn_load.setEnabled(False)
 
         self._status_thread.start()
 
 
     def on_status_saved(self, result):
-        self.window().setEnabled(True)
+        main_window = self.window()
+
+        self.table.setEnabled(True)
+        main_window.date_edit.setEnabled(True)
+        main_window.btn_load.setEnabled(True)
+
+        main_window.update_attendance_date_state()
 
         status_code, detail_text, leave_session = (
             self._pending_status
@@ -582,7 +614,22 @@ class TableTab(QWidget):
                         "ลบสถานะ Manual แล้ว / รอตรวจสอบใหม่"
                     ),
                 )
+                # ข้อมูลเวลาเดิมอาจถูกลบแล้ว
+                # ล้างเวลาบนหน้าจอเพื่อไม่ให้แสดงข้อมูลเก่า
+                self.table.setItem(
+                    row, 5, QTableWidgetItem("-")
+                )
+                self.table.setItem(
+                    row, 6, QTableWidgetItem("-")
+                )
 
+                self.table.setItem(
+                    row, 7,
+                    QTableWidgetItem(
+                        "ลบสถานะ/เวลา Manual แล้ว "
+                        "รอประมวลผลใหม่"
+                    ),
+                )
                 continue
 
 
@@ -640,7 +687,13 @@ class TableTab(QWidget):
             )
 
     def on_status_error(self, error_msg):
-        self.window().setEnabled(True)
+        main_window = self.window()
+
+        self.table.setEnabled(True)
+        main_window.date_edit.setEnabled(True)
+        main_window.btn_load.setEnabled(True)
+
+        main_window.update_attendance_date_state()
 
         QMessageBox.critical(
             self,
