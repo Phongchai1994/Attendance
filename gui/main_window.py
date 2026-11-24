@@ -8,7 +8,8 @@ from PyQt6.QtCore import QDate, QLocale, QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QFont
 
 # นำเข้า Tab ต่างๆ
-from gui.tabs import HomeTab, DashboardTab, TableTab, EmployeeTab
+from gui.tabs import HomeTab, DashboardTab, TableTab
+from gui.employee_tab import EmployeeTab
 
 # นำเข้า Database & Services
 from database.session import SessionLocal
@@ -397,7 +398,6 @@ class AttendanceMainWindow(QMainWindow):
         self.loader_thread.finished_signal.connect(self.on_load_finished)
         self.loader_thread.error_signal.connect(self.on_load_error)
         self.loader_thread.start()
-
     
     def on_load_finished(self, records, stats):
         """แสดงผลข้อมูล และคืนสถานะปุ่มเสมอ"""
@@ -462,7 +462,6 @@ class AttendanceMainWindow(QMainWindow):
             self.date_edit.setEnabled(True)
             self.update_attendance_date_state()
 
-
     
     def on_load_error(self, error_msg):
         """คืนสถานะหน้าจอแม้การประมวลผลล้มเหลว"""
@@ -484,6 +483,7 @@ class AttendanceMainWindow(QMainWindow):
             "ข้อผิดพลาด",
             f"เกิดข้อผิดพลาด:\n{error_msg}",
         )
+
 
 
     def setup_attendance_toolbar(self):
@@ -569,6 +569,7 @@ class AttendanceMainWindow(QMainWindow):
 
 
     
+    
     def update_attendance_date_state(self, *_):
         """ตรวจสอบวันที่ที่เลือกกับวันที่ของข้อมูลในตาราง"""
 
@@ -596,4 +597,5 @@ class AttendanceMainWindow(QMainWindow):
                 f"วันที่แสดงผล: {loaded_date:%d/%m/%Y}"
             )
             self.table_tab.table.setEnabled(True)
+
 

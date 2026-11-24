@@ -101,53 +101,159 @@ class ZKSyncService:
             stats['error'] = str(e)
             return stats
 
-    def upload_employee_to_zk(self, employee_code, employee_name, uid=None, device_ip="192.168.1.201", port=4370):
-        """ส่งข้อมูลพนักงาน 1 คนไปยังเครื่องสแกนนิ้ว"""
+    
+    def upload_employee_to_zk(
+        self,
+        employee_code,
+        employee_name,
+        uid=None,
+        device_ip="192.168.1.201",
+        port=4370,
+    ):
+        """เพิ่มหรืออัปเดตเจ้าหน้าที่ใน ZKTeco โดยรักษา UID เดิม"""
+
         from zk import ZK, const
-        
-        target_ip = getattr(self, 'device_ip', getattr(self, 'ip', getattr(self, 'ip_address', device_ip)))
-        target_port = getattr(self, 'port', port)
-        
-        zk = ZK(target_ip, port=target_port, timeout=5)
+
+        code = str(employee_code).strip()
+        name = str(employee_name).strip()[:20]
+
+        if not code or not name:
+            return {
+                "status": "error",
+                "msg": "รหัสหรือชื่อเจ้าหน้าที่ว่าง",
+            }
+
+        zk = ZK(
+            self.ip,
+            port=self.port,
+            timeout=5,
+            password=0,
+            force_udp=False,
+        )
+
         conn = None
+        device_disabled = False
+        result = {
+            "status": "error",
+            "msg": "ยังไม่สามารถส่งข้อมูลได้",
+        }
+
         try:
             conn = zk.connect()
-            
-            # ดึงรายชื่อผู้ใช้ทั้งหมดในเครื่องมาก่อน เพื่อหาว่ามีพนักงานคนนี้อยู่แล้วหรือไม่
-            users = conn.get_users()
-            existing_user = next((u for u in users if u.user_id == str(employee_code)), None)
-            
-            short_name = employee_name[:20]
-            
-            if existing_user:
-                # ถ้ามีอยู่แล้ว ให้อัปเดตข้อมูล (ใช้ uid เดิมของเครื่อง)
-                conn.set_user(
-                    uid=existing_user.uid,
-                    name=short_name,
-                    privilege=const.USER_DEFAULT,
-                    password=existing_user.password,
-                    group_id=existing_user.group_id,
-                    user_id=str(employee_code)
+
+            if conn is None:
+                raise RuntimeError(
+                    "เชื่อมต่อเครื่องสแกนไม่ได้"
                 )
-                return {"status": "success", "msg": f"อัปเดตข้อมูล {employee_name} ในเครื่องสแกนสำเร็จ"}
+
+            # ป้องกันการใช้งานเครื่องระหว่างปรับข้อมูล
+            conn.disable_device()
+            device_disabled = True
+
+            users = conn.get_users() or []
+
+            matched = [
+                user for user in users
+                if str(user.user_id) == code
+            ]
+
+            if len(matched) > 1:
+                raise RuntimeError(
+                    "พบบัญชีรหัสเดียวกันหลายรายการบนเครื่อง"
+                )
+
+            if matched:
+                old = matched[0]
+
+                # เก็บข้อมูลสำคัญเดิมของผู้ใช้ไว้
+                target_uid = old.uid
+                privilege = old.privilege
+                password = old.password or ""
+                group_id = old.group_id or ""
+                card = getattr(old, "card", 0) or 0
+
+                action = "อัปเดต"
+
             else:
-                # ถ้าเป็นคนใหม่ ให้เครื่องสแกนหา uid ว่างให้เอง (รันเลขต่อจากคนล่าสุด)
-                # ปกติ uid ของเครื่อง ZK จะต้องเป็นตัวเลขรันไปเรื่อยๆ (1, 2, 3...)
-                max_uid = max([u.uid for u in users]) if users else 0
-                new_uid = max_uid + 1
-                
-                conn.set_user(
-                    uid=new_uid,
-                    name=short_name,
-                    privilege=const.USER_DEFAULT,
-                    password='',
-                    group_id='',
-                    user_id=str(employee_code)
+                # เจ้าหน้าที่ใหม่: ใช้ UID ที่ยังไม่ซ้ำ
+                max_uid = max(
+                    (int(user.uid) for user in users),
+                    default=0,
                 )
-                return {"status": "success", "msg": f"เพิ่มข้อมูล {employee_name} ไปยังเครื่องสแกนสำเร็จ"}
-                
-        except Exception as e:
-            return {"status": "error", "msg": str(e)}
+
+                target_uid = max_uid + 1
+
+                if target_uid > 65535:
+                    raise RuntimeError(
+                        "ไม่พบ UID ว่างที่รองรับ"
+                    )
+
+                privilege = const.USER_DEFAULT
+                password = ""
+                group_id = ""
+                card = 0
+                action = "เพิ่ม"
+
+            saved = conn.set_user(
+                uid=target_uid,
+                name=name,
+                privilege=privilege,
+                password=password,
+                group_id=group_id,
+                user_id=code,
+                card=card,
+            )
+
+            if saved is False:
+                raise RuntimeError(
+                    "เครื่องสแกนไม่ยอมรับข้อมูลผู้ใช้"
+                )
+
+            # อ่านกลับเพื่อยืนยันว่ารหัสผู้ใช้อยู่ในเครื่อง
+            users_after = conn.get_users() or []
+
+            verified = any(
+                str(user.user_id) == code
+                and int(user.uid) == int(target_uid)
+                for user in users_after
+            )
+
+            if not verified:
+                raise RuntimeError(
+                    "ส่งข้อมูลแล้วแต่ตรวจสอบผลบนเครื่องไม่ผ่าน"
+                )
+
+            result = {
+                "status": "success",
+                "msg": (
+                    f"{action}เจ้าหน้าที่ {code} "
+                    f"ในเครื่องสแกนสำเร็จ"
+                ),
+            }
+
+        except Exception as exc:
+            result = {
+                "status": "error",
+                "msg": str(exc),
+            }
+
         finally:
-            if conn:
-                conn.disconnect()
+            if conn is not None:
+                if device_disabled:
+                    try:
+                        conn.enable_device()
+                    except Exception as exc:
+                        result = {
+                            "status": "error",
+                            "msg": (
+                                "ไม่สามารถเปิดเครื่องสแกน"
+                                f"กลับสู่โหมดใช้งาน: {exc}"
+                            ),
+                        }
+
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
+
+        return result

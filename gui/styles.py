@@ -22,11 +22,11 @@ def configure_app_font(app):
 
     # ลำดับความสำคัญของฟอนต์
     font_options = [
-        ("Sarabun", 12),
-        ("Noto Sans Thai", 11),
-        ("TH Sarabun New", 16),
         ("TH SarabunPSK", 16),
         ("TH Sarabun PSK", 16),
+        ("TH Sarabun New", 16),
+        ("Sarabun", 12),
+        ("Noto Sans Thai", 11),
     ]
 
     # ใช้ชื่อ Font ที่ Windows / Qt ตรวจพบจริง
