@@ -17,6 +17,7 @@ from models.employee import Employee
 from services.attendance_service import AttendanceService
 from services.zk_sync_service import ZKSyncService  # <--- เพิ่มนำเข้า ZK Service
 from services.leave_import_service import LeaveImportService
+from gui.thai_calendar import configure_thai_date_edit
 
 class DataLoaderThread(QThread):
     # สร้างสัญญาณเพื่อส่งข้อมูล (List ของพนักงาน และ Dict สถิติ) กลับไปยังหน้า UI
@@ -38,7 +39,24 @@ class DataLoaderThread(QThread):
         db = SessionLocal()
         try:
             service = AttendanceService(db)
-            employees = db.query(Employee).order_by(Employee.employee_code.asc()).all()
+
+            from sqlalchemy import or_
+            employees = (
+                db.query(Employee)
+                .filter(
+                    Employee.is_active.is_(True),
+                    or_(
+                        Employee.start_date.is_(None),
+                        Employee.start_date <= self.target_date,
+                    ),
+                    or_(
+                        Employee.resigned_date.is_(None),
+                        Employee.resigned_date >= self.target_date,
+                    ),
+                )
+                .order_by(Employee.employee_code.asc())
+                .all()
+            )
             
             stats = {"normal": 0, "late": 0, "leave": 0, "absent": 0, "duty": 0, "total": len(employees)}
             records = [] 
@@ -531,6 +549,7 @@ class AttendanceMainWindow(QMainWindow):
                 QLocale.Country.UnitedStates
             )
         )
+        configure_thai_date_edit(self.date_edit)
 
         self.date_edit.setMinimumWidth(155)
         self.date_edit.setMinimumHeight(30)

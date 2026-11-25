@@ -4,6 +4,7 @@ from PyQt6.QtCore import QLocale
 
 from PyQt6.QtWidgets import QApplication
 from gui.main_window import AttendanceMainWindow
+from gui.font_support import load_local_sarabun
 
 from gui.styles import (
     get_modern_stylesheet,
@@ -26,6 +27,7 @@ def main():
 
     # โหลด Font ภาษาไทย
     font_name = configure_app_font(app)
+    font_name = load_local_sarabun(app)
     print(f"Application Font: {font_name}")
 
     # โหลด Theme กลางของโปรแกรม

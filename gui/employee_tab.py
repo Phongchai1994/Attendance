@@ -6,7 +6,7 @@ from datetime import date
 from PyQt6.QtCore import (
     QDate, QLocale, Qt, QThread, QTimer, pyqtSignal
 )
-from PyQt6.QtGui import QBrush, QColor, QFont, QFontDatabase
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -36,30 +36,9 @@ from services.employee_service import (
     set_employee_active,
     sync_employee_to_zk,
 )
-
-
-def get_employee_font():
-    """เลือกฟอนต์ TH SarabunPSK ที่ติดตั้งจริง"""
-
-    families = {
-        name.lower().replace(" ", ""): name
-        for name in QFontDatabase.families()
-    }
-
-    for preferred in (
-        "TH SarabunPSK",
-        "TH Sarabun PSK",
-        "TH Sarabun New",
-    ):
-        actual = families.get(
-            preferred.lower().replace(" ", "")
-        )
-
-        if actual:
-            return QFont(actual, 16)
-
-    # หากไม่มีฟอนต์ จะใช้ฟอนต์กลางของโปรแกรม
-    return QApplication.font()
+from services.employee_options import POSITION_OPTIONS, LEVEL_OPTIONS
+from gui.font_support import apply_combo_font, to_arabic_digits
+from gui.thai_calendar import configure_thai_date_edit
 
 
 class EmployeeTask(QThread):
@@ -73,47 +52,26 @@ class EmployeeTask(QThread):
         self.operation = operation
         self.payload = payload
 
-    
     def run(self):
         try:
             if self.operation == "load":
                 result = load_employee_snapshot()
-
             elif self.operation == "save":
-                # บันทึก PostgreSQL ก่อน
                 result = save_employee(self.payload)
-
-                # จากนั้นส่งไปเครื่องสแกน
-                # หากส่งไม่สำเร็จ ต้องไม่รายงานว่า DB บันทึกล้มเหลว
+                # PostgreSQL เป็นผลลัพธ์หลัก; หากเครื่องออฟไลน์ไม่ rollback DB
                 try:
-                    result["zk_sync"] = sync_employee_to_zk(
-                        result["id"]
-                    )
+                    result["zk_sync"] = sync_employee_to_zk(result["id"])
                 except Exception as exc:
-                    result["zk_sync"] = {
-                        "status": "error",
-                        "msg": str(exc),
-                    }
-
+                    result["zk_sync"] = {"status": "error", "msg": str(exc)}
             elif self.operation == "active":
-                result = set_employee_active(
-                    self.payload["id"],
-                    self.payload["active"],
-                )
-
+                result = set_employee_active(self.payload["id"], self.payload["active"])
             elif self.operation == "sync_zk":
-                result = sync_employee_to_zk(
-                    self.payload["id"]
-                )
-
+                result = sync_employee_to_zk(self.payload["id"])
             else:
-                raise ValueError("ไม่รู้จักคำสั่ง")
-
+                raise ValueError("ไม่รู้จักคำสั่งจัดการเจ้าหน้าที่")
             self.succeeded.emit(result)
-
         except Exception as exc:
             self.failed.emit(str(exc))
-
 
 
 class OptionalDate(QWidget):
@@ -128,19 +86,7 @@ class OptionalDate(QWidget):
 
         self.check = QCheckBox("ระบุวันที่")
         self.edit = QDateEdit()
-        self.edit.setCalendarPopup(True)
-        self.edit.calendarWidget().setFont(
-            get_employee_font()
-        )
-
-        self.edit.setLocale(
-            QLocale(
-                QLocale.Language.English,
-                QLocale.Country.UnitedStates,
-            )
-        )
-
-        self.edit.setDisplayFormat("dd/MM/yyyy")
+        configure_thai_date_edit(self.edit)
         self.edit.setMinimumDate(QDate(1900, 1, 1))
         self.edit.setMaximumDate(QDate(2100, 12, 31))
         self.edit.setDate(QDate.currentDate())
@@ -194,25 +140,11 @@ class EmployeeTab(QWidget):
 
 
     def _apply_dropdown_fonts(self):
-        """บังคับฟอนต์ทั้งช่อง ComboBox และรายการ Popup"""
-
-        font = get_employee_font()
-
-        combos = (
-            self.status_filter,
-            self.dep_filter,
-            self.position_name,
-            self.position_level,
-            self.department,
-        )
-
-        for combo in combos:
-            combo.setFont(font)
-            combo.view().setFont(font)
-
-            if combo.isEditable():
-                combo.lineEdit().setFont(font)
-
+        for combo in (
+            self.status_filter, self.dep_filter,
+            self.position_name, self.position_level, self.department,
+        ):
+            apply_combo_font(combo)
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -249,6 +181,7 @@ class EmployeeTab(QWidget):
         self.status_filter.addItem("ทุกสถานะ", "all")
         self.status_filter.addItem("ใช้งาน", "active")
         self.status_filter.addItem("ปิดใช้งาน", "inactive")
+        self.status_filter.addItem("สิ้นสุดงานตามวันที่", "ended")
         self.status_filter.currentIndexChanged.connect(
             self.apply_filters
         )
@@ -399,32 +332,22 @@ class EmployeeTab(QWidget):
         )
 
         
-        # ตำแหน่ง: เลือกจากรายการที่มีหรือพิมพ์ค่าใหม่ได้
+        # ตำแหน่ง/ระดับ: dropdown แบบ fix ไม่ให้พิมพ์เอง
         self.position_name = QComboBox()
-        self.position_name.setEditable(True)
-        self.position_name.setInsertPolicy(
-            QComboBox.InsertPolicy.NoInsert
-        )
-        self.position_name.setMaxVisibleItems(15)
-        self.position_name.lineEdit().setMaxLength(150)
+        self.position_name.addItem("-- เลือกตำแหน่ง --", None)
+        for value in POSITION_OPTIONS:
+            self.position_name.addItem(value, value)
         form.addRow("ตำแหน่ง:", self.position_name)
 
-        # ระดับ: เลือกจากรายการที่มีหรือพิมพ์ค่าใหม่ได้
         self.position_level = QComboBox()
-        self.position_level.setEditable(True)
-        self.position_level.setInsertPolicy(
-            QComboBox.InsertPolicy.NoInsert
-        )
-        self.position_level.setMaxVisibleItems(15)
-        self.position_level.lineEdit().setMaxLength(100)
+        self.position_level.addItem("-- เลือกระดับ --", None)
+        for value in LEVEL_OPTIONS:
+            self.position_level.addItem(value, value)
         form.addRow("ระดับ:", self.position_level)
 
-        # สังกัด: อ่านจากตาราง departments
         self.department = QComboBox()
         self.department.addItem("ไม่ระบุสังกัด", None)
-        self.department.setMaxVisibleItems(15)
         form.addRow("หน่วยงาน/สังกัด:", self.department)
-
 
         self.card_no = QLineEdit()
         self.card_no.setMaxLength(50)
@@ -495,13 +418,9 @@ class EmployeeTab(QWidget):
         )
         buttons.addWidget(self.btn_toggle)
 
-        self.btn_sync_zk = QPushButton(
-            "ส่งข้อมูลไปเครื่องสแกน"
-        )
+        self.btn_sync_zk = QPushButton("ส่งไป ZKTeco")
         self.btn_sync_zk.setEnabled(False)
-        self.btn_sync_zk.clicked.connect(
-            self.sync_zk_current
-        )
+        self.btn_sync_zk.clicked.connect(self.sync_zk_current)
         buttons.addWidget(self.btn_sync_zk)
 
         form_root.addLayout(buttons)
@@ -554,8 +473,16 @@ class EmployeeTab(QWidget):
         self.btn_new.setEnabled(not busy)
 
         self.btn_toggle.setEnabled(
+            not busy and self._selected_record is not None
+        )
+        self.btn_sync_zk.setEnabled(
             not busy
             and self._selected_record is not None
+            and self._selected_record["is_active"]
+            and (
+                not self._selected_record["resigned_date"]
+                or date.fromisoformat(self._selected_record["resigned_date"]) >= date.today()
+            )
         )
 
         self.table.setEnabled(not busy)
@@ -580,78 +507,45 @@ class EmployeeTab(QWidget):
         ):
             widget.setEnabled(not busy)
 
-        self.btn_sync_zk.setEnabled(
-            not busy
-            and self._selected_record is not None
-            and self._selected_record["is_active"]
-        )
-
     def reload_data(self):
         self.count_label.setText(
             "กำลังโหลดข้อมูลเจ้าหน้าที่..."
         )
         self._start_task("load")
 
-    
     def _task_succeeded(self, result):
         operation = self._worker.operation
-
         if operation == "load":
             self._records = result["employees"]
             self._departments = result["departments"]
-
             self._update_department_options()
             self._update_position_level_options()
             self._render_table()
+            self._apply_dropdown_fonts()
             return
 
         if operation == "save":
             self._pending_select_id = result["id"]
             self._reload_after_task = True
-
-            zk_result = result.get("zk_sync", {})
-
-            if zk_result.get("status") == "success":
-                QMessageBox.information(
-                    self,
-                    "บันทึกสำเร็จ",
-                    "บันทึก PostgreSQL เรียบร้อย\n"
-                    + zk_result["msg"],
-                )
+            zk = result.get("zk_sync", {})
+            if zk.get("status") == "success":
+                QMessageBox.information(self, "บันทึกสำเร็จ", "บันทึก PostgreSQL และส่งไป ZKTeco สำเร็จ")
             else:
                 QMessageBox.warning(
-                    self,
-                    "บันทึกฐานข้อมูลแล้ว",
-                    "บันทึก PostgreSQL สำเร็จ\n"
-                    "แต่ยังส่งไปเครื่องสแกนไม่สำเร็จ\n\n"
-                    + zk_result.get("msg", "ไม่ทราบสาเหตุ")
-                    + "\n\nสามารถกดส่งข้อมูลไปเครื่องสแกนอีกครั้งได้",
+                    self, "บันทึก PostgreSQL แล้ว",
+                    "บันทึกข้อมูลเจ้าหน้าที่ลง PostgreSQL สำเร็จ\n"
+                    "แต่ยังไม่ส่งไป ZKTeco: " + zk.get("msg", "ไม่ทราบสาเหตุ")
+                    + "\nสามารถกดปุ่ม 'ส่งไป ZKTeco' เพื่อลองใหม่ได้",
                 )
-
         elif operation == "active":
             self._pending_select_id = result["id"]
             self._reload_after_task = True
-
-            QMessageBox.information(
-                self,
-                "สำเร็จ",
-                "เปลี่ยนสถานะเจ้าหน้าที่เรียบร้อยแล้ว",
-            )
-
+            QMessageBox.information(self, "สำเร็จ", "เปลี่ยนสถานะเจ้าหน้าที่แล้ว")
         elif operation == "sync_zk":
             if result.get("status") == "success":
-                QMessageBox.information(
-                    self,
-                    "ส่งข้อมูลสำเร็จ",
-                    result["msg"],
-                )
+                QMessageBox.information(self, "ส่งข้อมูลสำเร็จ", result.get("msg", "สำเร็จ"))
             else:
-                QMessageBox.warning(
-                    self,
-                    "ส่งข้อมูลไม่สำเร็จ",
-                    result.get("msg", "ไม่ทราบสาเหตุ"),
-                )
-
+                QMessageBox.warning(self, "ส่งข้อมูลไม่สำเร็จ", result.get("msg", "ไม่ทราบสาเหตุ"))
 
     def _task_failed(self, message):
         QMessageBox.critical(
@@ -674,34 +568,28 @@ class EmployeeTab(QWidget):
             self.reload_data()
 
     def _update_position_level_options(self):
-        """สร้างตัวเลือกจากตำแหน่งและระดับที่มีใน DB"""
+        """อ่านตัวเลือกจากรายการ FIX เท่านั้น (ไม่ดึงค่าจาก DB)"""
+        # ตัวเลือกสร้างไว้ตอน _build_ui; หลัง reload ไม่ต้อง add รายการใหม่
+        return
 
-        fields = (
-            (self.position_name, "position_name"),
-            (self.position_level, "position_level"),
-        )
+    @staticmethod
+    def _set_fixed_combo_value(combo, value, allowed):
+        """รักษาค่าเดิมของเจ้าหน้าที่ที่ไม่อยู่ในรายการ โดยไม่เพิ่มรายการถาวร"""
+        # ล้างตัวเลือกค่าเดิมที่อาจเพิ่มไว้ระหว่างแสดงคนก่อนหน้า
+        for index in range(combo.count()-1, 0, -1):
+            data = combo.itemData(index)
+            if data not in allowed:
+                combo.removeItem(index)
 
-        for combo, key in fields:
-            previous = combo.currentText().strip()
+        if not value:
+            combo.setCurrentIndex(0)
+            return
 
-            values = sorted(
-                {
-                    str(rec.get(key) or "").strip()
-                    for rec in self._records
-                    if str(rec.get(key) or "").strip()
-                },
-                key=str.casefold,
-            )
-
-            combo.blockSignals(True)
-
-            try:
-                combo.clear()
-                combo.addItem("")
-                combo.addItems(values)
-                combo.setCurrentText(previous)
-            finally:
-                combo.blockSignals(False)
+        index = combo.findData(value)
+        if index < 0:
+            combo.addItem(f"{to_arabic_digits(value)} (ค่าเดิม)", value)
+            index = combo.findData(value)
+        combo.setCurrentIndex(index)
 
     # ---------------------------------
     # ข้อมูลหน่วยงาน
@@ -808,15 +696,17 @@ class EmployeeTab(QWidget):
                     rec["department_name"] or "-",
                     self._format_date(rec["start_date"]),
                     (
-                        "ใช้งาน"
-                        if rec["is_active"]
-                        else "ปิดใช้งาน"
+                        "ปิดใช้งาน" if not rec["is_active"]
+                        else "สิ้นสุดงาน" if (
+                            rec["resigned_date"]
+                            and date.fromisoformat(rec["resigned_date"]) < date.today()
+                        ) else "ใช้งาน"
                     ),
                 ]
 
                 for col, value in enumerate(values):
                     item = QTableWidgetItem(
-                        str(value)
+                        to_arabic_digits(value)
                     )
 
                     item.setData(
@@ -827,7 +717,10 @@ class EmployeeTab(QWidget):
                     if col == 6:
                         color = (
                             "#15803D"
-                            if rec["is_active"]
+                            if rec["is_active"] and (
+                                not rec["resigned_date"]
+                                or date.fromisoformat(rec["resigned_date"]) >= date.today()
+                            )
                             else "#B91C1C"
                         )
 
@@ -885,6 +778,7 @@ class EmployeeTab(QWidget):
 
         status = self.status_filter.currentData()
         department_id = self.dep_filter.currentData()
+        today = date.today()
 
         shown = 0
 
@@ -902,18 +796,21 @@ class EmployeeTab(QWidget):
                 )
             ).casefold()
 
+            ended = bool(
+                rec["resigned_date"]
+                and date.fromisoformat(rec["resigned_date"]) < today
+            )
+            active_now = rec["is_active"] and not ended
+            status_match = (
+                status == "all"
+                or (status == "active" and active_now)
+                or (status == "inactive" and not rec["is_active"])
+                or (status == "ended" and rec["is_active"] and ended)
+            )
             matches = (
                 (not search or search in target)
-                and (
-                    status == "all"
-                    or rec["is_active"] == (
-                        status == "active"
-                    )
-                )
-                and (
-                    department_id is None
-                    or rec["department_id"] == department_id
-                )
+                and status_match
+                and (department_id is None or rec["department_id"] == department_id)
             )
 
             self.table.setRowHidden(
@@ -964,6 +861,7 @@ class EmployeeTab(QWidget):
     def _clear_form(self):
         self._selected_id = None
         self._selected_record = None
+
         self.id_label.setText(
             "เพิ่มรายการใหม่"
         )
@@ -978,8 +876,8 @@ class EmployeeTab(QWidget):
         ):
             field.clear()
 
-        self.position_name.setCurrentText("")
-        self.position_level.setCurrentText("")
+        self._set_fixed_combo_value(self.position_name, None, POSITION_OPTIONS)
+        self._set_fixed_combo_value(self.position_level, None, LEVEL_OPTIONS)
 
         self._select_combo_data(
             self.department,
@@ -998,9 +896,8 @@ class EmployeeTab(QWidget):
         )
 
         self.btn_toggle.setEnabled(False)
-        
-        self.code.setReadOnly(False)
         self.btn_sync_zk.setEnabled(False)
+        self.code.setReadOnly(False)
 
     def new_employee(self):
         self.table.clearSelection()
@@ -1022,16 +919,12 @@ class EmployeeTab(QWidget):
             ("last_name", self.last_name),
             ("card_no", self.card_no),
         ):
-            field.setText(
-                record[key] or ""
-            )
+            field.setText(to_arabic_digits(record[key] or "") if key == "employee_code" else (record[key] or ""))
 
-        self.position_name.setCurrentText(
-            record["position_name"] or ""
-        )
-        self.position_level.setCurrentText(
-            record["position_level"] or ""
-        )
+        self.code.setReadOnly(True)
+        self._set_fixed_combo_value(self.position_name, record["position_name"], POSITION_OPTIONS)
+        self._set_fixed_combo_value(self.position_level, record["position_level"], LEVEL_OPTIONS)
+
         self.legacy_user_id.setText(
             str(record["legacy_user_id"])
             if record["legacy_user_id"] is not None
@@ -1057,10 +950,14 @@ class EmployeeTab(QWidget):
 
         active = record["is_active"]
 
+        ended = bool(
+            record["resigned_date"]
+            and date.fromisoformat(record["resigned_date"]) < date.today()
+        )
         self.state_label.setText(
-            "สถานะ: ใช้งาน"
-            if active
-            else "สถานะ: ปิดใช้งาน"
+            "สถานะ: ปิดใช้งาน" if not active
+            else "สถานะ: สิ้นสุดงานตามวันที่" if ended
+            else "สถานะ: ใช้งาน"
         )
 
         self.btn_toggle.setText(
@@ -1070,11 +967,11 @@ class EmployeeTab(QWidget):
         )
 
         self.btn_toggle.setEnabled(True)
-        # ไม่ให้แก้รหัสเดิมจนกว่าจะมีระบบย้ายรหัสเครื่องสแกน
-        self.code.setReadOnly(True)
-
         self.btn_sync_zk.setEnabled(
-            record["is_active"]
+            active and (
+                not record["resigned_date"]
+                or date.fromisoformat(record["resigned_date"]) >= date.today()
+            )
         )
 
     # ---------------------------------
@@ -1096,12 +993,17 @@ class EmployeeTab(QWidget):
 
         payload = {
             "id": self._selected_id,
-            "employee_code": code,
+            # รักษารหัส DB เดิมแม้ GUI แสดงเลขอารบิก
+            "employee_code": (
+                self._selected_record["employee_code"]
+                if self._selected_record is not None
+                else to_arabic_digits(code)
+            ),
             "title": self.title.text(),
             "first_name": first,
             "last_name": last,
-            "position_name": self.position_name.currentText().strip(),
-            "position_level": self.position_level.currentText().strip(),
+            "position_name": self.position_name.currentData(),
+            "position_level": self.position_level.currentData(),
             "department_id": self.department.currentData(),
             "card_no": self.card_no.text(),
             "legacy_user_id": (
@@ -1163,20 +1065,7 @@ class EmployeeTab(QWidget):
 
 
     def sync_zk_current(self):
-        """ส่งข้อมูลที่บันทึกใน DB ไปเครื่องสแกนอีกครั้ง"""
-
+        """สั่งส่งข้อมูลผู้ใช้ที่เลือกไปเครื่องสแกนอีกครั้ง"""
         if self._selected_record is None:
             return
-
-        if not self._selected_record["is_active"]:
-            QMessageBox.warning(
-                self,
-                "แจ้งเตือน",
-                "เจ้าหน้าที่ถูกปิดใช้งาน",
-            )
-            return
-
-        self._start_task(
-            "sync_zk",
-            {"id": self._selected_record["id"]},
-        )
+        self._start_task("sync_zk", {"id": self._selected_record["id"]})
